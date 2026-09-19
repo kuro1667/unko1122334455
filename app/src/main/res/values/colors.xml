@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  KyomuTools カラーパレット
+  Copyright (c) 2025 KyomuTools - All rights reserved.
+-->
+<resources>
+    <!-- ベースカラー -->
+    <color name="bg_primary">#FF141420</color>
+    <color name="bg_secondary">#FF1E1E2E</color>
+    <color name="bg_tertiary">#FF28283C</color>
+    <color name="bg_card">#FF1A1A2E</color>
+
+    <!-- アクセントカラー -->
+    <color name="accent_primary">#FF2ECC71</color>
+    <color name="accent_secondary">#FF27AE60</color>
+    <color name="accent_blue">#FF50C8FF</color>
+    <color name="accent_orange">#FFC87828</color>
+    <color name="accent_red">#FFE74C3C</color>
+    <color name="accent_purple">#FF8C60C8</color>
+
+    <!-- テキストカラー -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFB0B0B0</color>
+    <color name="text_disabled">#FF606060</color>
+    <color name="text_success">#FF64FF64</color>
+    <color name="text_warning">#FFFFC832</color>
+    <color name="text_error">#FFFF5050</color>
+
+    <!-- ボーダーカラー -->
+    <color name="border_primary">#B42ECC71</color>
+    <color name="border_secondary">#503C3C5A</color>
+
+    <!-- タブカラー -->
+    <color name="tab_active_bg">#FF2ECC71</color>
+    <color name="tab_active_text">#FF0A0A19</color>
+    <color name="tab_inactive_bg">#FF28283C</color>
+    <color name="tab_inactive_text">#FF969696</color>
+
+    <!-- ボタンカラー -->
+    <color name="btn_primary">#FF2ECC71</color>
+    <color name="btn_danger">#FFE74C3C</color>
+    <color name="btn_warning">#FFC87828</color>
+    <color name="btn_info">#FF3C78C8</color>
+    <color name="btn_mute">#FFC83C3C</color>
+    <color name="btn_unmute">#FF3CA03C</color>
+    <color name="btn_kick">#FFC87828</color>
+    <color name="btn_guard">#FF1E90FF</color>
+    <color name="btn_neutral">#FF505050</color>
+    <color name="btn_sdk">#FFC88C3C</color>
+    <color name="btn_delete">#FFC83C3C</color>
+    <color name="btn_rejoin">#FF3CA03C</color>
+    <color name="btn_reset">#FF8C3CC8</color>
+    <color name="btn_save">#FF3C78C8</color>
+    <color name="btn_disabled">#FF3C3C50</color>
+</resources>
