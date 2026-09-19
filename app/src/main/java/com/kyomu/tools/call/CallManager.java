@@ -892,13 +892,34 @@ public class CallManager {
             HookManager.log("[Unmute] agora.a GC済");
             return;
         }
+        boolean sent = false;
+        // ① マッピングで試す
         try {
-            XposedHelpers.callMethod(agoraA,
-                    MappingManager.mtd("AgoraWrapper.sendCommand"),
-                    "requestLiftAudioMute");
+            String methodName = MappingManager.mtd("AgoraWrapper.sendCommand");
+            java.lang.reflect.Method mappedMethod =
+                    agoraA.getClass().getDeclaredMethod(methodName, String.class);
+            mappedMethod.setAccessible(true);
+            mappedMethod.invoke(agoraA, "requestLiftAudioMute");
+            sent = true;
+        } catch (Throwable ignored) {}
+        // ② マッピング失敗ならブルートフォース
+        if (!sent) {
+            for (java.lang.reflect.Method m : agoraA.getClass().getDeclaredMethods()) {
+                Class<?>[] params = m.getParameterTypes();
+                if (params.length == 1 && params[0] == String.class) {
+                    try {
+                        m.setAccessible(true);
+                        m.invoke(agoraA, "requestLiftAudioMute");
+                        sent = true;
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }
+        if (sent) {
             HookManager.log("[Unmute] requestLiftAudioMute 送信成功");
-        } catch (Throwable t) {
-            HookManager.log("[Unmute] 送信失敗: " + t.getMessage());
+        } else {
+            HookManager.log("[Unmute] 送信失敗: マッピング・ブルートフォース両方失敗");
         }
     }
+
 }

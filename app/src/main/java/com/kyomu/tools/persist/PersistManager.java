@@ -110,18 +110,36 @@ public class PersistManager {
             agoraA = StateHolder.getAgoraA();
             if (agoraA == null) return;
         }
+        boolean sent = false;
+        // ① マッピングで試す
         try {
             XposedHelpers.callMethod(
                     agoraA,
                     MappingManager.mtd("AgoraWrapper.sendCommand"),
                     "requestLiftAudioMute");
+            sent = true;
+        } catch (Throwable ignored) {}
+        // ② マッピング失敗ならブルートフォース
+        if (!sent) {
+            for (java.lang.reflect.Method m : agoraA.getClass().getDeclaredMethods()) {
+                Class<?>[] params = m.getParameterTypes();
+                if (params.length == 1 && params[0] == String.class) {
+                    try {
+                        m.setAccessible(true);
+                        m.invoke(agoraA, "requestLiftAudioMute");
+                        sent = true;
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }
+        if (sent) {
             StateHolder.sentCount++;
             if (StateHolder.sentCount % 50 == 0) {
                 HookManager.log("[Persist] 送信 #" + StateHolder.sentCount);
             }
             notifyStatusUpdate();
-        } catch (Throwable t) {
-            HookManager.log("[Persist] 送信失敗: " + t.getMessage());
+        } else {
+            HookManager.log("[Persist] 送信失敗: マッピング・ブルートフォース両方失敗");
             StateHolder.setAgoraA(null);
         }
     }

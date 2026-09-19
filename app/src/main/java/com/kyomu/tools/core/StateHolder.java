@@ -32,6 +32,8 @@ public class StateHolder {
     public static volatile boolean appMuteBlock = false;
     public static volatile boolean serverKick   = false;
     public static volatile boolean adBlock      = true;
+    public static volatile boolean screenShareAudioForce = false;
+
 
     // ===== UI表示状態 =====
     public static volatile boolean onLeftSide  = true;
