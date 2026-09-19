@@ -19,6 +19,7 @@ import android.widget.TextView;
 
 import com.kyomu.tools.call.CallHistoryEntry;
 import com.kyomu.tools.call.CallManager;
+import com.kyomu.tools.call.ScreenManager;
 import com.kyomu.tools.core.HookManager;
 import com.kyomu.tools.core.StateHolder;
 import com.kyomu.tools.ui.UIHelper;
@@ -220,6 +221,36 @@ public class CallPage {
             updateCallStatus(activity, "全履歴クリア", Color.YELLOW);
         });
         page.addView(clearAllBtn);
+
+        page.addView(UIHelper.makeDivider(activity));
+
+        TextView screenLabel = new TextView(activity);
+        screenLabel.setText("── 画面共有 ──");
+        screenLabel.setTextColor(Color.argb(200, 200, 200, 200));
+        screenLabel.setTextSize(11);
+        screenLabel.setGravity(Gravity.CENTER);
+        screenLabel.setPadding(0, 8, 0, 4);
+        page.addView(screenLabel);
+
+        LinearLayout screenBtnRow = new LinearLayout(activity);
+        screenBtnRow.setOrientation(LinearLayout.HORIZONTAL);
+        screenBtnRow.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams screenBtnLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        screenBtnLp.setMargins(6, 0, 6, 0);
+
+        TextView screenStartBtn = UIHelper.makeMuteActionBtn(activity, "共有開始",
+                Color.argb(255, 200, 50, 50));
+        screenStartBtn.setOnClickListener(v -> ScreenManager.forceStart());
+
+        TextView screenStopBtn = UIHelper.makeMuteActionBtn(activity, "共有停止",
+                Color.argb(255, 80, 80, 80));
+        screenStopBtn.setOnClickListener(v -> ScreenManager.forceStop());
+
+        screenBtnRow.addView(screenStartBtn, screenBtnLp);
+        screenBtnRow.addView(screenStopBtn, screenBtnLp);
+        page.addView(screenBtnRow);
 
         TextView callNote = new TextView(activity);
         callNote.setText("※ REJOIN: 通話外から実行（別通話に一度参加が必要）\n"

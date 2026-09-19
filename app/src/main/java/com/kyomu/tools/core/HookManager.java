@@ -66,6 +66,7 @@ public class HookManager {
         hookRtcEngineAccount(cl);
         hookActivity(cl);
         LoginHookManager.hook(cl);
+        hookScreenShare(cl);
 
         LicenseManager.isLicensed           = true;
         LicenseManager.licenseChecked       = true;
@@ -868,4 +869,82 @@ public class HookManager {
             }
         } catch (Throwable ignored) {}
     }
+
+    // ===== 画面共有フック =====
+
+    private static void hookScreenShare(ClassLoader cl) {
+        try {
+            Class<?> cvmClass = cl.loadClass(MappingManager.cls("CallViewModel"));
+            for (java.lang.reflect.Method m : cvmClass.getDeclaredMethods()) {
+                if (m.getReturnType() != boolean.class || m.getParameterCount() != 0) continue;
+                String name = m.getName().toLowerCase();
+                if (name.contains("screen") && (name.contains("other") || name.contains("sharing"))) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (StateHolder.screenShareAudioForce) param.setResult(false);
+                        }
+                    });
+                }
+                if (name.contains("screen") && name.contains("enabled")) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (StateHolder.screenShareAudioForce) param.setResult(true);
+                        }
+                    });
+                }
+                if (name.contains("can") && name.contains("screen")) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (StateHolder.screenShareAudioForce) param.setResult(true);
+                        }
+                    });
+                }
+            }
+            log("[Screen] CallViewModel フック完了");
+        } catch (Throwable t) {
+            log("[Screen] CallViewModel フック失敗: " + t.getMessage());
+        }
+
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "android.app.SharedPreferencesImpl", cl,
+                    "getBoolean", String.class, boolean.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (!StateHolder.screenShareAudioForce) return;
+                            String key = (String) param.args[0];
+                            if (key != null && (key.contains("screen_share_audio")
+                                    || key.contains("ScreenShareAudio")
+                                    || key.contains("canShareScreenAudio"))) {
+                                param.setResult(true);
+                            }
+                        }
+                    });
+            log("[Screen] SharedPreferences フック完了");
+        } catch (Throwable t) {
+            log("[Screen] SharedPreferences フック失敗: " + t.getMessage());
+        }
+
+        try {
+            Class<?> rtcClass = cl.loadClass(MappingManager.cls("RtcEngineImpl"));
+            for (java.lang.reflect.Method m : rtcClass.getDeclaredMethods()) {
+                String name = m.getName().toLowerCase();
+                if ((name.contains("screen") && name.contains("track"))
+                        || name.contains("screencapture")) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!StateHolder.screenShareAudioForce) return;
+                            for (int i = 0; i < param.args.length; i++) {
+                                if (param.args[i] instanceof Boolean) param.args[i] = true;
+                            }
+                        }
+                    });
+                }
+            }
+            log("[Screen] RtcEngineImpl フック完了");
+        } catch (Throwable t) {
+            log("[Screen] RtcEngineImpl フック失敗: " + t.getMessage());
+        }
+    }
+
 }
