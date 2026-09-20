@@ -33,8 +33,8 @@ public class LoginHookManager {
     private static final String WEB_UA =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     + "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    + "Chrome/120.0.0.0 Safari/537.36";
-    private static final String APP_VERSION = "4.26.1";
+                    + "Chrome/124.0.0.0 Safari/537.36";
+    private static final String APP_VERSION = "4.27.0";
 
     private static volatile Object  pendingFakeResponse   = null;
     private static volatile Object  cachedAccountInstance = null;
