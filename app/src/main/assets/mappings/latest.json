@@ -1,6 +1,6 @@
 {
   "version": "4.27.0",
-  "updated": "2026-04-02",
+  "updated": "2026-09-20",
   "classes": {
     "AccountManager":     "jp.nanameue.yay.account.a",
     "RealmUser":          "jp.nanameue.yay.data.realm.User",
@@ -29,8 +29,8 @@
     "AccountManager.getCurrentUser":     "d",
     "AccountManager.saveAuth":           "j",
     "UserInteractor.login":              "A",
-    "AgoraWrapper.joinChannel":          "W",
-    "AgoraWrapper.sendCommand":          "b0",
+    "AgoraWrapper.joinChannel":          "Z",
+    "AgoraWrapper.sendCommand":          "f0",
     "AgoraWrapper.muteTargets":          "w",
     "AgoraWrapper.muteAudio":            "L",
     "AgoraDelegate.handleMute":          "c",

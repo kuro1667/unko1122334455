@@ -279,11 +279,7 @@ public class CallManager {
 
                 java.lang.reflect.InvocationHandler observerHandler = (proxy, method, args) -> {
                     String methodName = method.getName();
-                    if (args != null && args.length > 0 && args[0] != null
-                            && !"onError".equals(methodName)
-                            && !"toString".equals(methodName)
-                            && !"hashCode".equals(methodName)
-                            && !"equals".equals(methodName)) {
+                    if ("onSuccess".equals(methodName) && args != null && args.length > 0 && args[0] != null) {
                         Object response = args[0];
                         try {
                             Object sigPayload = extractSignaturePayload(response);
@@ -437,11 +433,7 @@ public class CallManager {
 
                 java.lang.reflect.InvocationHandler observerHandler = (proxy, method, args) -> {
                     String methodName = method.getName();
-                    if (args != null && args.length > 0 && args[0] != null
-                            && !"onError".equals(methodName)
-                            && !"toString".equals(methodName)
-                            && !"hashCode".equals(methodName)
-                            && !"equals".equals(methodName)) {
+                    if ("onSuccess".equals(methodName) && args != null && args.length > 0 && args[0] != null) {
                         Object response = args[0];
                         try {
                             Object sigPayload = extractSignaturePayload(response);
