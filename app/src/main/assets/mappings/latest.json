@@ -15,14 +15,15 @@
     "CallImpl":           "jp.nanameue.yay.call.e0",
     "CallApi":            "jp.nanameue.yay.api.d",
     "AgoraWrapper":       "jp.nanameue.agora.a",
+    "AgoraClient":        "jp.nanameue.agora.c",
     "AgoraDelegate":      "jp.nanameue.agora.d",
+    "RxSingle":           "di.s",
     "RxObserver":         "di.t",
     "RtcEngineImpl":      "io.agora.rtc2.internal.RtcEngineImpl",
     "RtcEventHandler":    "io.agora.rtc2.IRtcEngineEventHandler",
     "RtcEngine":          "io.agora.rtc2.RtcEngine",
     "LeaveChannelOptions":"io.agora.rtc2.LeaveChannelOptions",
-    "LicenseClient":      "com.pairip.licensecheck.LicenseClient",
-    "CallInitializer":    "jp.nanameue.yay.call.d0$a"
+    "LicenseClient":      "com.pairip.licensecheck.LicenseClient"
   },
   "methods": {
     "AccountManager.getMyUser":          "c",
@@ -31,13 +32,14 @@
     "UserInteractor.login":              "A",
     "AgoraWrapper.joinChannel":          "Z",
     "AgoraWrapper.sendCommand":          "f0",
+    "AgoraWrapper.onMessageReceived":    "onMessageReceived",
     "AgoraWrapper.muteTargets":          "w",
     "AgoraWrapper.muteAudio":            "L",
     "AgoraDelegate.handleMute":          "c",
     "CallApi.requestMuteSignature":      "p",
     "CallApi.requestKickSignature":      "w",
     "CallImpl.init":                     "i",
-    "RxObserver.subscribe":              "c",
+    "RxSingle.subscribe":                "c",
     "LicenseClient.processResponse":     "processResponse"
   },
   "fields": {

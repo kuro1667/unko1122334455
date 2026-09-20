@@ -592,14 +592,16 @@ public class HookManager {
             log(foundSendCmd ? "[OK] sendCommand 確認OK" : "[WARN] sendCommand 未発見");
 
             // 受信コマンドの監視（キック・ミュート検知）
+            // onMessageReceived(String publisher, String message) → 2引数
             try {
                 String recvMethod = MappingManager.mtd("AgoraWrapper.onMessageReceived");
                 XposedHelpers.findAndHookMethod(
                         MappingManager.cls("AgoraWrapper"), cl, recvMethod,
-                        String.class,
+                        String.class, String.class,
                         new XC_MethodHook() {
                             @Override protected void beforeHookedMethod(MethodHookParam param) {
-                                String msg = (String) param.args[0];
+                                // args[0]=publisher(送信者UUID), args[1]=message(コマンド文字列)
+                                String msg = (String) param.args[1];
                                 if (msg == null) return;
                                 if (msg.contains("kick")) {
                                     log("[受信] キックコマンド検知: " + msg);
