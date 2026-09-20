@@ -760,6 +760,20 @@ public class CallManager {
             if (StateHolder.cachedAgoraARef.get() != null) return true;
             Object cvm = StateHolder.getCachedCallViewModel();
             if (cvm == null) return false;
+
+            // 経路1: GlobalCallViewModel.engine フィールドから直接取得（最短）
+            try {
+                Object agoraA = XposedHelpers.getObjectField(cvm, "engine");
+                if (agoraA != null) {
+                    StateHolder.cachedAgoraARef = new java.lang.ref.WeakReference<>(agoraA);
+                    HookManager.log("[Agora] engine直接取得成功");
+                    return true;
+                }
+            } catch (Throwable t) {
+                HookManager.log("[Agora] engine直接取得失敗: " + t.getMessage());
+            }
+
+            // 経路2: CVM → myCall(e0) → agoraClient(c) → engine(a) の3段階
             try {
                 Object myCall = XposedHelpers.getObjectField(cvm, "myCall");
                 if (myCall == null) return false;
@@ -769,14 +783,14 @@ public class CallManager {
                 Object agoraA = XposedHelpers.getObjectField(agoraC,
                         MappingManager.fld("AgoraClient.engine"));
                 if (agoraA != null) {
-                    StateHolder.cachedAgoraARef =
-                            new java.lang.ref.WeakReference<>(agoraA);
-                    HookManager.log("[Agora] agora.a インスタンス取得成功");
+                    StateHolder.cachedAgoraARef = new java.lang.ref.WeakReference<>(agoraA);
+                    HookManager.log("[Agora] myCall経由取得成功");
                     return true;
                 }
             } catch (Throwable t) {
-                HookManager.log("[Agora] キャッシュ失敗: " + t.getMessage());
+                HookManager.log("[Agora] myCall経由失敗: " + t.getMessage());
             }
+
             return false;
         }
     }
