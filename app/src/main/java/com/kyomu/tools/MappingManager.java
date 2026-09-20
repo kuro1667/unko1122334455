@@ -14,6 +14,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -199,6 +201,131 @@ public class MappingManager {
     /** マッピングバージョン文字列 */
     public static String getMappingVersion() {
         return mappingVersion;
+    }
+
+    // ---------- 検証 ----------
+
+    /**
+     * マッピング全エントリをリフレクションで検証し、
+     * 存在しないクラス・メソッド・フィールドを [WARN] としてログ出力する。
+     * フックの成否には影響しない（あくまで警告のみ）。
+     *
+     * @param cl yay アプリの ClassLoader
+     */
+    public static void validate(ClassLoader cl) {
+        if (!loaded) {
+            addLog("[Mapping][WARN] validate: マッピング未ロード");
+            return;
+        }
+        addLog("[Mapping] 検証開始 (v" + mappingVersion + ")");
+        int ok = 0, warn = 0;
+
+        // ===== classes =====
+        if (classMap != null) {
+            for (java.util.Iterator<String> it = classMap.keys(); it.hasNext(); ) {
+                String key = it.next();
+                String cls = classMap.optString(key, "");
+                if (cls.isEmpty()) {
+                    addLog("[Mapping][WARN] classes." + key + " → 値が空");
+                    warn++;
+                    continue;
+                }
+                try {
+                    cl.loadClass(cls);
+                    ok++;
+                } catch (ClassNotFoundException e) {
+                    addLog("[Mapping][WARN] classes." + key + " → \"" + cls + "\" クラス未発見");
+                    warn++;
+                }
+            }
+        }
+
+        // ===== methods =====
+        // キーの形式: "ClassName.methodKey" → classes から対象クラスを引く
+        if (methodMap != null) {
+            for (java.util.Iterator<String> it = methodMap.keys(); it.hasNext(); ) {
+                String key = it.next();           // e.g. "AgoraWrapper.joinChannel"
+                String mtd = methodMap.optString(key, "");
+                if (mtd.isEmpty()) {
+                    addLog("[Mapping][WARN] methods." + key + " → 値が空");
+                    warn++;
+                    continue;
+                }
+                // "ClassName.xxx" の ClassName 部分で classes を引く
+                String clsKey = key.contains(".") ? key.substring(0, key.indexOf('.')) : key;
+                String clsName = (classMap != null) ? classMap.optString(clsKey, "") : "";
+                if (clsName.isEmpty()) {
+                    // classes に対応エントリがない場合はスキップ（別途 classes で警告済み）
+                    addLog("[Mapping][WARN] methods." + key + " → 親クラス \"" + clsKey + "\" がclassesに未定義");
+                    warn++;
+                    continue;
+                }
+                try {
+                    Class<?> c = cl.loadClass(clsName);
+                    boolean found = false;
+                    for (Method m : c.getDeclaredMethods()) {
+                        if (m.getName().equals(mtd)) { found = true; break; }
+                    }
+                    if (found) {
+                        ok++;
+                    } else {
+                        addLog("[Mapping][WARN] methods." + key + " → \""
+                                + clsName + "." + mtd + "()\" メソッド未発見");
+                        warn++;
+                    }
+                } catch (ClassNotFoundException e) {
+                    // クラス自体が見つからない場合は classes で既に警告が出るので省略
+                    warn++;
+                }
+            }
+        }
+
+        // ===== fields =====
+        // キーの形式: "ClassName.fieldKey" → classes から対象クラスを引く
+        // ただし "AgoraClient" は classes に独立したエントリがないので
+        // getDeclaredFields を全スーパークラス含めて検索する
+        if (fieldMap != null) {
+            for (java.util.Iterator<String> it = fieldMap.keys(); it.hasNext(); ) {
+                String key = it.next();           // e.g. "CallImpl.conferenceCall"
+                String fld = fieldMap.optString(key, "");
+                if (fld.isEmpty()) {
+                    addLog("[Mapping][WARN] fields." + key + " → 値が空");
+                    warn++;
+                    continue;
+                }
+                String clsKey  = key.contains(".") ? key.substring(0, key.indexOf('.')) : key;
+                String clsName = (classMap != null) ? classMap.optString(clsKey, "") : "";
+                if (clsName.isEmpty()) {
+                    addLog("[Mapping][WARN] fields." + key + " → 親クラス \"" + clsKey + "\" がclassesに未定義");
+                    warn++;
+                    continue;
+                }
+                try {
+                    Class<?> c = cl.loadClass(clsName);
+                    boolean found = false;
+                    // getDeclaredFields はそのクラスのみ。スーパークラスも含めて検索
+                    Class<?> cur = c;
+                    while (cur != null && cur != Object.class) {
+                        for (Field f : cur.getDeclaredFields()) {
+                            if (f.getName().equals(fld)) { found = true; break; }
+                        }
+                        if (found) break;
+                        cur = cur.getSuperclass();
+                    }
+                    if (found) {
+                        ok++;
+                    } else {
+                        addLog("[Mapping][WARN] fields." + key + " → \""
+                                + clsName + "." + fld + "\" フィールド未発見");
+                        warn++;
+                    }
+                } catch (ClassNotFoundException e) {
+                    warn++;
+                }
+            }
+        }
+
+        addLog("[Mapping] 検証完了: OK=" + ok + " WARN=" + warn);
     }
 
     // ---------- バージョン更新 ----------

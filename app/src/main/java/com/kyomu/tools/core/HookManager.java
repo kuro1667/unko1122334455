@@ -53,6 +53,10 @@ public class HookManager {
             return;
         }
 
+        // マッピング全エントリの存在を検証（警告のみ・フック処理は継続）
+        MappingManager.validate(cl);
+        for (String vlog : MappingManager.drainPendingLogs()) log(vlog);
+
         hookNetworkSecurity();
         hookVip(cl);
         hookCallViewModel(cl);
