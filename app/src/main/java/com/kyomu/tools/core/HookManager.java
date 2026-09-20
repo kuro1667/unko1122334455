@@ -592,30 +592,39 @@ public class HookManager {
             log(foundSendCmd ? "[OK] sendCommand 確認OK" : "[WARN] sendCommand 未発見");
 
             // 受信コマンドの監視（キック・ミュート検知）
-            // onMessageReceived(String publisher, String message) → 2引数
+            // RTMメッセージ受信の実際の経路:
+            // lj.a0.onMessageEvent(MessageEvent) → a.b.invoke(publisher, message)
+            // → AgoraWrapper.e0(Function0)
+            // フック対象: lj.a0.onMessageEvent(io.agora.rtm.MessageEvent)
             try {
-                String recvMethod = MappingManager.mtd("AgoraWrapper.onMessageReceived");
                 XposedHelpers.findAndHookMethod(
-                        MappingManager.cls("AgoraWrapper"), cl, recvMethod,
-                        String.class, String.class,
+                        "lj.a0", cl, "onMessageEvent",
+                        "io.agora.rtm.MessageEvent",
                         new XC_MethodHook() {
                             @Override protected void beforeHookedMethod(MethodHookParam param) {
-                                // args[0]=publisher(送信者UUID), args[1]=message(コマンド文字列)
-                                String msg = (String) param.args[1];
-                                if (msg == null) return;
-                                if (msg.contains("kick")) {
-                                    log("[受信] キックコマンド検知: " + msg);
-                                    if (StateHolder.kickBlock) {
-                                        log("[BLOCK] キックコマンドブロック");
-                                        param.setResult(null);
+                                try {
+                                    Object event = param.args[0];
+                                    if (event == null) return;
+                                    // MessageEvent.getMessage().getData() → コマンド文字列
+                                    Object message = XposedHelpers.callMethod(event, "getMessage");
+                                    if (message == null) return;
+                                    Object data = XposedHelpers.callMethod(message, "getData");
+                                    if (!(data instanceof String)) return;
+                                    String msg = (String) data;
+                                    if (msg.contains("kick")) {
+                                        log("[受信] キックコマンド検知: " + msg);
+                                        if (StateHolder.kickBlock) {
+                                            log("[BLOCK] キックコマンドブロック");
+                                            param.setResult(null);
+                                        }
+                                    } else if (msg.contains("muteAudio")) {
+                                        log("[受信] ミュートコマンド検知: " + msg);
+                                    } else if (msg.contains("liftAudioMute")) {
+                                        log("[受信] ミュート解除コマンド検知: " + msg);
+                                    } else {
+                                        log("[受信] コマンド: " + msg);
                                     }
-                                } else if (msg.contains("muteAudio")) {
-                                    log("[受信] ミュートコマンド検知: " + msg);
-                                } else if (msg.contains("liftAudioMute")) {
-                                    log("[受信] ミュート解除コマンド検知: " + msg);
-                                } else {
-                                    log("[受信] コマンド: " + msg);
-                                }
+                                } catch (Throwable ignored) {}
                             }
                         });
                 log("[OK] AgoraWrapper 受信コマンド監視フック成功");
