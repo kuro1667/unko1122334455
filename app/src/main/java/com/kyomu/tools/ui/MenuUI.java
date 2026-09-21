@@ -34,6 +34,7 @@ import com.kyomu.tools.ui.pages.LogPage;
 import com.kyomu.tools.ui.pages.MainPage;
 import com.kyomu.tools.ui.pages.MutePage;
 import com.kyomu.tools.ui.pages.SettingsPage;
+import com.kyomu.tools.ui.pages.TestPage;
 
 import java.lang.ref.WeakReference;
 
@@ -214,6 +215,7 @@ public class MenuUI {
         final TextView tabMute     = UIHelper.makeTabBtn(activity, "ミュート", StateHolder.currentTab == 2);
         final TextView tabCall     = UIHelper.makeTabBtn(activity, "Call",     StateHolder.currentTab == 3);
         final TextView tabSettings = UIHelper.makeTabBtn(activity, "設定",     StateHolder.currentTab == 4);
+        final TextView tabTest     = UIHelper.makeTabBtn(activity, "TEST",     StateHolder.currentTab == 5);
 
         LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
@@ -223,6 +225,7 @@ public class MenuUI {
         tabBar.addView(tabMute,     new LinearLayout.LayoutParams(tabLp));
         tabBar.addView(tabCall,     new LinearLayout.LayoutParams(tabLp));
         tabBar.addView(tabSettings, new LinearLayout.LayoutParams(tabLp));
+        tabBar.addView(tabTest,     new LinearLayout.LayoutParams(tabLp));
         menu.addView(tabBar);
 
         // コンテンツ
@@ -236,6 +239,7 @@ public class MenuUI {
         final LinearLayout mutePage     = MutePage.build(activity);
         final LinearLayout callPage     = CallPage.build(activity);
         final LinearLayout settingsPage = SettingsPage.build(activity);
+        final LinearLayout testPage     = TestPage.build(activity);
 
         // SettingsPage に参照を渡す
         SettingsPage.setRefs(menuOuter, menuScroll, null);
@@ -245,30 +249,35 @@ public class MenuUI {
         mutePage.setVisibility(StateHolder.currentTab == 2 ? View.VISIBLE : View.GONE);
         callPage.setVisibility(StateHolder.currentTab == 3 ? View.VISIBLE : View.GONE);
         settingsPage.setVisibility(StateHolder.currentTab == 4 ? View.VISIBLE : View.GONE);
+        testPage.setVisibility(StateHolder.currentTab == 5 ? View.VISIBLE : View.GONE);
 
         contentFrame.addView(mainPage);
         contentFrame.addView(logsPage);
         contentFrame.addView(mutePage);
         contentFrame.addView(callPage);
         contentFrame.addView(settingsPage);
+        contentFrame.addView(testPage);
         menu.addView(contentFrame);
 
         // タブ切り替え
         tabMain.setOnClickListener(v -> switchTab(activity, 0,
-                mainPage, logsPage, mutePage, callPage, settingsPage,
-                tabMain, tabLogs, tabMute, tabCall, tabSettings));
+                mainPage, logsPage, mutePage, callPage, settingsPage, testPage,
+                tabMain, tabLogs, tabMute, tabCall, tabSettings, tabTest));
         tabLogs.setOnClickListener(v -> switchTab(activity, 1,
-                mainPage, logsPage, mutePage, callPage, settingsPage,
-                tabMain, tabLogs, tabMute, tabCall, tabSettings));
+                mainPage, logsPage, mutePage, callPage, settingsPage, testPage,
+                tabMain, tabLogs, tabMute, tabCall, tabSettings, tabTest));
         tabMute.setOnClickListener(v -> switchTab(activity, 2,
-                mainPage, logsPage, mutePage, callPage, settingsPage,
-                tabMain, tabLogs, tabMute, tabCall, tabSettings));
+                mainPage, logsPage, mutePage, callPage, settingsPage, testPage,
+                tabMain, tabLogs, tabMute, tabCall, tabSettings, tabTest));
         tabCall.setOnClickListener(v -> switchTab(activity, 3,
-                mainPage, logsPage, mutePage, callPage, settingsPage,
-                tabMain, tabLogs, tabMute, tabCall, tabSettings));
+                mainPage, logsPage, mutePage, callPage, settingsPage, testPage,
+                tabMain, tabLogs, tabMute, tabCall, tabSettings, tabTest));
         tabSettings.setOnClickListener(v -> switchTab(activity, 4,
-                mainPage, logsPage, mutePage, callPage, settingsPage,
-                tabMain, tabLogs, tabMute, tabCall, tabSettings));
+                mainPage, logsPage, mutePage, callPage, settingsPage, testPage,
+                tabMain, tabLogs, tabMute, tabCall, tabSettings, tabTest));
+        tabTest.setOnClickListener(v -> switchTab(activity, 5,
+                mainPage, logsPage, mutePage, callPage, settingsPage, testPage,
+                tabMain, tabLogs, tabMute, tabCall, tabSettings, tabTest));
 
         // 閉じるボタン
         TextView close = new TextView(activity);
@@ -388,20 +397,22 @@ public class MenuUI {
     private static void switchTab(Activity activity, int tab,
                                   LinearLayout mainPage, LinearLayout logsPage,
                                   LinearLayout mutePage,  LinearLayout callPage,
-                                  LinearLayout settingsPage,
+                                  LinearLayout settingsPage, LinearLayout testPage,
                                   TextView tabMain, TextView tabLogs, TextView tabMute,
-                                  TextView tabCall, TextView tabSettings) {
+                                  TextView tabCall, TextView tabSettings, TextView tabTest) {
         StateHolder.currentTab = tab;
         mainPage.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
         logsPage.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
         mutePage.setVisibility(tab == 2 ? View.VISIBLE : View.GONE);
         callPage.setVisibility(tab == 3 ? View.VISIBLE : View.GONE);
         settingsPage.setVisibility(tab == 4 ? View.VISIBLE : View.GONE);
+        testPage.setVisibility(tab == 5 ? View.VISIBLE : View.GONE);
         UIHelper.styleTabBtn(tabMain,     tab == 0, activity);
         UIHelper.styleTabBtn(tabLogs,     tab == 1, activity);
         UIHelper.styleTabBtn(tabMute,     tab == 2, activity);
         UIHelper.styleTabBtn(tabCall,     tab == 3, activity);
         UIHelper.styleTabBtn(tabSettings, tab == 4, activity);
+        UIHelper.styleTabBtn(tabTest,     tab == 5, activity);
         if (tab == 3) {
             CallPage.updateCallSpinner(activity);
             CallPage.updateCallInfo(activity);
@@ -491,5 +502,6 @@ public class MenuUI {
         MutePage.resetRefs();
         CallPage.resetRefs();
         SettingsPage.resetRefs();
+        TestPage.resetRefs();
     }
 }
