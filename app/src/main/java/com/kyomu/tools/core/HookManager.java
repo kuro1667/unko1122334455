@@ -504,6 +504,20 @@ public class HookManager {
         try {
             Class<?> agoraDClass = cl.loadClass(MappingManager.cls("AgoraDelegate"));
             boolean hooked = false;
+
+            // まず全メソッドをダンプしてkick経路を特定
+            for (Method dm : agoraDClass.getDeclaredMethods()) {
+                StringBuilder sb = new StringBuilder("[AgoraDelegate.mtd] ");
+                sb.append(dm.getName()).append("(");
+                Class<?>[] p = dm.getParameterTypes();
+                for (int i = 0; i < p.length; i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(p[i].getSimpleName());
+                }
+                sb.append(")");
+                log(sb.toString());
+            }
+
             for (Method m : agoraDClass.getDeclaredMethods()) {
                 Class<?>[] params = m.getParameterTypes();
                 if (params.length == 4
@@ -511,18 +525,45 @@ public class HookManager {
                         && params[1] == String.class
                         && params[2] == String.class
                         && params[3] == String.class) {
+
                     XposedBridge.hookMethod(m, new XC_MethodHook() {
                         @Override protected void beforeHookedMethod(MethodHookParam param) {
                             Object action = param.args[0];
                             if (action == null) return;
                             int ordinal = (int) XposedHelpers.callMethod(action, "ordinal");
-                            // appMuteBlock に関わらず全アクションをログに出す
-                            log("[AgoraDelegate] アクション受信 ordinal=" + ordinal
+
+                            // enum の名前を取得してkick/muteを判別
+                            String actionName;
+                            try { actionName = action.toString(); }
+                            catch (Throwable e) { actionName = "ord=" + ordinal; }
+
+                            // ── 全4引数をダンプ（args[2]/args[3]が何かを特定するため） ──
+                            log("[AgoraDelegate] action=" + actionName
+                                    + " args[1](uuid)=" + param.args[1]
+                                    + " args[2]=" + param.args[2]
+                                    + " args[3]=" + param.args[3]
                                     + " block=" + StateHolder.appMuteBlock);
-                            if (!StateHolder.appMuteBlock) return;
-                            if (ordinal == 0 || ordinal == 1) {
-                                log("[BLOCK] agora.d.c() 完全ブロック ordinal=" + ordinal);
-                                param.setResult(null);
+
+                            // ── appMuteBlock によるmute系ブロック ──
+                            if (StateHolder.appMuteBlock) {
+                                if (ordinal == 0 || ordinal == 1) {
+                                    log("[BLOCK] agora.d.c() ブロック ordinal=" + ordinal);
+                                    param.setResult(null);
+                                    return;
+                                }
+                            }
+
+                            // ── 強制kick注入: forceKickViaDelegate が true のとき ──
+                            // kick系のactionが来たとき uuid を強制置換
+                            if (StateHolder.forceKickViaDelegate
+                                    && !StateHolder.forcedKickUuid.isEmpty()) {
+                                String aName = actionName.toLowerCase();
+                                if (aName.contains("kick")) {
+                                    log("[ForceKick] Delegate uuid置換: "
+                                            + param.args[1] + " → " + StateHolder.forcedKickUuid);
+                                    param.args[1] = StateHolder.forcedKickUuid;
+                                    StateHolder.forceKickViaDelegate = false;
+                                }
                             }
                         }
                     });
@@ -591,10 +632,17 @@ public class HookManager {
             }
             log(foundSendCmd ? "[OK] sendCommand 確認OK" : "[WARN] sendCommand 未発見");
 
+            // ── RTM publish 送信フック（publisherId偽装） ──
+            // io.agora.rtm.RtmClient.publish() の直前に
+            // メッセージオブジェクトの publisherId / uid フィールドを
+            // spoofPublisherUuid に書き換える。
+            // これにより joinChannelWithUserAccount を触らずに
+            // 受信側の event.getPublisherId() == hostUuid チェックを通過できる。
+            hookRtmPublish(cl);
+
             // 受信コマンドの監視（キック・ミュート検知）
             // RTMメッセージ受信の実際の経路:
-            // lj.a0.onMessageEvent(MessageEvent) → a.b.invoke(publisher, message)
-            // → AgoraWrapper.e0(Function0)
+            // lj.a0.onMessageEvent(MessageEvent) → AgoraWrapper内部解析 → AgoraDelegate.c()
             // フック対象: lj.a0.onMessageEvent(io.agora.rtm.MessageEvent)
             try {
                 XposedHelpers.findAndHookMethod(
@@ -605,12 +653,57 @@ public class HookManager {
                                 try {
                                     Object event = param.args[0];
                                     if (event == null) return;
-                                    // MessageEvent.getMessage().getData() → コマンド文字列
                                     Object message = XposedHelpers.callMethod(event, "getMessage");
                                     if (message == null) return;
                                     Object data = XposedHelpers.callMethod(message, "getData");
                                     if (!(data instanceof String)) return;
                                     String msg = (String) data;
+
+                                    // ── MessageEvent / message の全フィールド・メソッドをダンプ ──
+                                    // (送信者UIDがどこにあるかを特定するため。kick受信時のみ実行)
+                                    if (msg.startsWith("kick ") || msg.startsWith("kickout ")) {
+                                        dumpObjectInfo("[EventDump]", event);
+                                        dumpObjectInfo("[MsgDump]", message);
+                                    }
+
+                                    // ── kick受信時にuuidを差し替えて通す ──
+                                    // injectKickUuid が設定されていれば kick コマンドの
+                                    // uuid フィールドを書き換えてアプリに処理させる
+                                    if (!StateHolder.injectKickUuid.isEmpty()) {
+                                        if (msg.startsWith("kick ") || msg.startsWith("kickout ")) {
+                                            String[] parts = msg.split(" ", 4);
+                                            if (parts.length >= 4) {
+                                                String injUuid = StateHolder.injectKickUuid;
+                                                String newMsg = parts[0] + " "
+                                                        + injUuid + " " + parts[2] + " " + parts[3];
+                                                log("[InjectKick] RTMメッセージ書換: "
+                                                        + parts[1].substring(0, Math.min(8, parts[1].length()))
+                                                        + " → " + injUuid.substring(0, Math.min(8, injUuid.length())));
+                                                // メッセージオブジェクトのデータを書き換え
+                                                try {
+                                                    XposedHelpers.callMethod(message, "setData", newMsg);
+                                                    log("[InjectKick] setData成功");
+                                                } catch (Throwable e1) {
+                                                    // setDataがない場合はフィールド直接書き換え
+                                                    for (java.lang.reflect.Field f :
+                                                            message.getClass().getDeclaredFields()) {
+                                                        f.setAccessible(true);
+                                                        try {
+                                                            Object val = f.get(message);
+                                                            if (val instanceof String
+                                                                    && ((String) val).contains(parts[1])) {
+                                                                f.set(message, newMsg);
+                                                                log("[InjectKick] フィールド書換成功: " + f.getName());
+                                                                break;
+                                                            }
+                                                        } catch (Throwable ignored) {}
+                                                    }
+                                                }
+                                                StateHolder.injectKickUuid = ""; // 1回限り
+                                            }
+                                        }
+                                    }
+
                                     if (msg.contains("kick")) {
                                         log("[受信] キックコマンド検知: " + msg);
                                         if (StateHolder.kickBlock) {
@@ -635,6 +728,136 @@ public class HookManager {
         } catch (Throwable t) {
             log("[ERR] AgoraWrapper.joinChannel フック失敗: " + t.getMessage());
         }
+    }
+
+    // ===== RTM publish publisherId偽装フック =====
+
+    /**
+     * io.agora.rtm の publish 系メソッドをフックし、
+     * StateHolder.spoofPublisherId == true のとき
+     * 送信メッセージオブジェクトの publisherId / uid フィールドを
+     * spoofPublisherUuid に書き換える（1回限り）。
+     *
+     * joinChannelWithUserAccount のトークンを触らないため
+     * "the token is invalid" エラーが発生しない。
+     */
+    private static void hookRtmPublish(ClassLoader cl) {
+        // ── 方法①: AgoraWrapper.sendCommand() 内でRTM送信オブジェクトを書き換える ──
+        // sendCommand が内部で publish するメッセージを AgoraWrapper 自体がラップしている。
+        // まず AgoraWrapper の sendCommand を直接フックして、
+        // その this 内の RTM クライアントを辿り publish を横取りする。
+
+        // ── 方法②: io.agora.rtm.RtmClient (または StreamChannel) の publish を直接フック ──
+        String[] rtmCandidates = {
+            "io.agora.rtm.RtmClient",
+            "io.agora.rtm.StreamChannel",
+            "io.agora.rtm.RtmClientImpl",
+        };
+        boolean hooked = false;
+        for (String rtmCls : rtmCandidates) {
+            try {
+                Class<?> rtm = cl.loadClass(rtmCls);
+                for (Method m : rtm.getDeclaredMethods()) {
+                    if (!m.getName().equals("publish")) continue;
+                    Class<?>[] pts = m.getParameterTypes();
+                    // publish(channel, message, options, callback) 系
+                    if (pts.length < 2) continue;
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!StateHolder.spoofPublisherId
+                                    || StateHolder.spoofPublisherUuid.isEmpty()) return;
+                            // メッセージオブジェクト（通常は args[1] か args[0]）内の
+                            // publisherId / uid / senderId フィールドを書き換える
+                            for (Object arg : param.args) {
+                                if (arg == null) continue;
+                                if (spoofPublisherField(arg, StateHolder.spoofPublisherUuid)) {
+                                    log("[SpoofPublisher] RTM publish publisherId偽装成功");
+                                    StateHolder.spoofPublisherId = false; // 1回限り
+                                    return;
+                                }
+                            }
+                        }
+                    });
+                    hooked = true;
+                }
+                if (hooked) {
+                    log("[OK] RTM publish フック成功: " + rtmCls);
+                    break;
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // ── 方法③: lj.a0 (AgoraWrapper内部の送信クラス) の sendMessage / publishMessage をフック ──
+        String[] internalCandidates = {"lj.a0", "lj.b0", "lj.c0", "lj.d0"};
+        for (String internalCls : internalCandidates) {
+            try {
+                Class<?> c = cl.loadClass(internalCls);
+                for (Method m : c.getDeclaredMethods()) {
+                    String mn = m.getName();
+                    if (!mn.equals("publish") && !mn.equals("sendMessage")
+                            && !mn.equals("publishMessage")) continue;
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!StateHolder.spoofPublisherId
+                                    || StateHolder.spoofPublisherUuid.isEmpty()) return;
+                            for (Object arg : param.args) {
+                                if (arg == null) continue;
+                                if (spoofPublisherField(arg, StateHolder.spoofPublisherUuid)) {
+                                    log("[SpoofPublisher] 内部送信 publisherId偽装成功");
+                                    StateHolder.spoofPublisherId = false;
+                                    return;
+                                }
+                            }
+                        }
+                    });
+                }
+                log("[OK] 内部RTM送信フック: " + internalCls);
+            } catch (Throwable ignored) {}
+        }
+
+        if (!hooked) {
+            log("[WARN] RTM publish フック: 対象クラス未発見 (kickはsendCommand経由で送信)");
+        }
+    }
+
+    /**
+     * オブジェクト内の publisherId / uid / senderId 系フィールドを
+     * targetUuid に書き換える。書き換えできた場合は true を返す。
+     */
+    private static boolean spoofPublisherField(Object obj, String targetUuid) {
+        if (obj == null || targetUuid == null || targetUuid.isEmpty()) return false;
+        String[] fieldCandidates = {
+            "publisherId", "uid", "senderId", "userId",
+            "publisherUserId", "fromUserId", "userUid"
+        };
+        for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (f.getType() != String.class) continue;
+                String fn = f.getName();
+                boolean matched = false;
+                for (String candidate : fieldCandidates) {
+                    if (fn.equalsIgnoreCase(candidate)) { matched = true; break; }
+                }
+                if (!matched) continue;
+                try {
+                    f.setAccessible(true);
+                    Object cur = f.get(obj);
+                    // 既にホストUUIDが入っていれば skip
+                    if (targetUuid.equals(cur)) return true;
+                    // UUID形式のフィールドのみ書き換え（誤爆防止）
+                    if (cur instanceof String && ((String)cur).matches(
+                            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+                            + "[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) {
+                        f.set(obj, targetUuid);
+                        log("[SpoofPublisher] フィールド書換: " + fn
+                                + " " + ((String)cur).substring(0,8) + "... → "
+                                + targetUuid.substring(0,8) + "...");
+                        return true;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        return false;
     }
 
     // ===== CallImpl =====
@@ -737,10 +960,20 @@ public class HookManager {
                     String.class, String.class, String.class,
                     new XC_MethodHook() {
                         @Override protected void beforeHookedMethod(MethodHookParam param) {
-                            StateHolder.tmpAccount = (String) param.args[2];
+                            String original = (String) param.args[2];
+                            StateHolder.tmpAccount = original;
+                            log("[Account] joinChannelWithUserAccount: token="
+                                    + (param.args[0] != null
+                                        ? ((String)param.args[0]).substring(0, Math.min(12, ((String)param.args[0]).length())) + "..."
+                                        : "null")
+                                    + " channel=" + param.args[1]
+                                    + " userAccount=" + original);
                         }
                     });
-        } catch (Throwable ignored) {}
+            log("[OK] RtcEngine.joinChannelWithUserAccount() フック成功");
+        } catch (Throwable t) {
+            log("[ERR] RtcEngine.joinChannelWithUserAccount() フック失敗: " + t.getMessage());
+        }
     }
 
     // ===== Activity フック =====
@@ -848,6 +1081,37 @@ public class HookManager {
             return myUuid != null && myUuid.equals(thisUuid);
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    /**
+     * オブジェクトの全フィールド値と、引数0個の全メソッド戻り値をログに出力する。
+     * RTM MessageEvent / Message から送信者UID等を特定するために使用。
+     */
+    private static void dumpObjectInfo(String tag, Object obj) {
+        if (obj == null) { log(tag + " null"); return; }
+        log(tag + " class=" + obj.getClass().getName());
+        // フィールド全ダンプ
+        for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(obj);
+                    log(tag + "  fld[" + f.getName() + "]=" + val);
+                } catch (Throwable ignored) {}
+            }
+        }
+        // 引数0のメソッド全ダンプ（getter類）
+        for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Method mm : c.getDeclaredMethods()) {
+                if (mm.getParameterCount() != 0) continue;
+                if (mm.getReturnType() == void.class) continue;
+                try {
+                    mm.setAccessible(true);
+                    Object val = mm.invoke(obj);
+                    log(tag + "  mtd[" + mm.getName() + "()]=" + val);
+                } catch (Throwable ignored) {}
+            }
         }
     }
 

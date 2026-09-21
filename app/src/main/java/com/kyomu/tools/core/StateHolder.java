@@ -138,4 +138,47 @@ public class StateHolder {
 
     // ===== ログイン =====
     public static volatile boolean loginHookEnabled = false;
+
+    // ===== テストページ =====
+    public static final List<String> testResultLog =
+            Collections.synchronizedList(new ArrayList<>());
+    public static final int TEST_LOG_MAX = 50;
+
+    // ===== AgoraDelegate kick注入（HookManagerで使用） =====
+
+    /**
+     * RTM受信フック内で kick/kickout コマンドの uuid を差し替える。
+     * 空文字 = 無効。1回実行後に自動クリア。
+     */
+    public static volatile String injectKickUuid        = "";
+
+    /**
+     * AgoraDelegate.c() フック内で kick action の uuid を強制書き換える。
+     */
+    public static volatile boolean forceKickViaDelegate = false;
+    public static volatile String  forcedKickUuid       = "";
+
+    /** AgoraDelegate の kick ordinal（ログから自動検出・保存） */
+    public static volatile int     kickActionOrdinal    = -1;
+
+    // ===== ホストUUID（uuidMap逆引きで取得） =====
+
+    /**
+     * uuidMap を tmpHostId で逆引きして得たホストの callUserUuid。
+     * TestPage の「ホストUUID取得」ボタンで更新される。
+     */
+    public static volatile String  detectedHostUuid    = "";
+
+    // ===== RTM publisherId スプーフィング =====
+
+    /**
+     * true のとき、次の RtcEngine.joinChannelWithUserAccount() 呼び出しで
+     * userAccount 引数（= RTMのpublisherId になる）を spoofPublisherUuid に差し替える。
+     * 差し替え後は自動で false に戻す（1回限り）。
+     *
+     * 目的: RTMチャンネルにホストのUUIDで参加することで、
+     *       kick コマンド受信側の publisherId == hostUuid チェックを通過させる。
+     */
+    public static volatile boolean spoofPublisherId   = false;
+    public static volatile String  spoofPublisherUuid = "";
 }
