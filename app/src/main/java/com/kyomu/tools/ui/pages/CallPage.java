@@ -19,6 +19,7 @@ import android.widget.TextView;
 
 import com.kyomu.tools.call.CallHistoryEntry;
 import com.kyomu.tools.call.CallManager;
+import com.kyomu.tools.call.MuteTarget;
 import com.kyomu.tools.call.ScreenManager;
 import com.kyomu.tools.core.HookManager;
 import com.kyomu.tools.core.StateHolder;
@@ -251,6 +252,157 @@ public class CallPage {
         screenBtnRow.addView(screenStartBtn, screenBtnLp);
         screenBtnRow.addView(screenStopBtn, screenBtnLp);
         page.addView(screenBtnRow);
+
+        page.addView(UIHelper.makeDivider(activity));
+
+        // ── ロール連打 ──
+        TextView roleSpamLabel = new TextView(activity);
+        roleSpamLabel.setText("── ロール連打 ──");
+        roleSpamLabel.setTextColor(Color.argb(200, 200, 180, 255));
+        roleSpamLabel.setTextSize(11);
+        roleSpamLabel.setGravity(Gravity.CENTER);
+        roleSpamLabel.setPadding(0, 8, 0, 4);
+        page.addView(roleSpamLabel);
+
+        // 送信間隔バー
+        final TextView roleSpamIntervalLabel = new TextView(activity);
+        roleSpamIntervalLabel.setText("送信間隔: " + StateHolder.roleSpamInterval + "秒");
+        roleSpamIntervalLabel.setTextColor(Color.argb(200, 200, 200, 200));
+        roleSpamIntervalLabel.setTextSize(11);
+        roleSpamIntervalLabel.setGravity(Gravity.CENTER);
+        roleSpamIntervalLabel.setPadding(0, 0, 0, 0);
+        page.addView(roleSpamIntervalLabel);
+
+        SeekBar roleSpamBar = new SeekBar(activity);
+        roleSpamBar.setMax(49);  // 0.2秒〜5.0秒 (0.1秒刻み×49 = 0.2〜5.0)
+        roleSpamBar.setProgress((int) ((StateHolder.roleSpamInterval - 0.2f) * 10));
+        roleSpamBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                StateHolder.roleSpamInterval = (progress + 2) / 10f; // 0.2〜5.0秒
+                roleSpamIntervalLabel.setText("送信間隔: " + StateHolder.roleSpamInterval + "秒");
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {
+                HookManager.log("[Role] 送信間隔: " + StateHolder.roleSpamInterval + "秒");
+            }
+        });
+        page.addView(roleSpamBar);
+
+        // ボタン行
+        LinearLayout roleSpamBtnRow = new LinearLayout(activity);
+        roleSpamBtnRow.setOrientation(LinearLayout.HORIZONTAL);
+        roleSpamBtnRow.setGravity(Gravity.CENTER);
+        roleSpamBtnRow.setPadding(0, 8, 0, 4);
+        LinearLayout.LayoutParams roleSpamBtnLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        roleSpamBtnLp.setMargins(6, 0, 6, 0);
+
+        // 停止ボタン（先に定義してON/OFFで参照できるようにする）
+        final TextView[] stopBtnRef = new TextView[1];
+
+        TextView modSpamBtn = UIHelper.makeMuteActionBtn(activity, "+モデ連打",
+                Color.argb(255, 160, 80, 220));
+        modSpamBtn.setOnClickListener(v -> {
+            if (StateHolder.roleSpamRunning) {
+                StateHolder.roleSpamRunning = false;
+                modSpamBtn.setText("+モデ連打");
+                stopBtnRef[0].setVisibility(View.GONE);
+                HookManager.log("[Role] +モデ連打 停止");
+                return;
+            }
+            StateHolder.roleSpamRunning = true;
+            modSpamBtn.setText("■ 停止");
+            stopBtnRef[0].setVisibility(View.GONE);
+            HookManager.log("[Role] +モデ連打 開始 interval=" + StateHolder.roleSpamInterval + "秒");
+            new Thread(() -> {
+                int round = 0;
+                while (StateHolder.roleSpamRunning) {
+                    round++;
+                    int count = 0;
+                    synchronized (StateHolder.muteTargets) {
+                        for (MuteTarget mt : StateHolder.muteTargets) {
+                            if (!StateHolder.roleSpamRunning) break;
+                            if (mt.guarded) continue;
+                            CallManager.executeChangeUserRole(mt, true, true);
+                            count++;
+                        }
+                    }
+                    if (round == 1) {
+                        HookManager.log("[Role] +モデ連打 第1周: " + count + "人に送信");
+                    }
+                    try {
+                        Thread.sleep((long) (StateHolder.roleSpamInterval * 1000));
+                    } catch (InterruptedException ignored) {}
+                }
+                Activity act = StateHolder.getLastActivity();
+                if (act != null) act.runOnUiThread(() -> {
+                    modSpamBtn.setText("+モデ連打");
+                });
+                HookManager.log("[Role] +モデ連打 終了 (計" + round + "周)");
+            }).start();
+        });
+
+        TextView userSpamBtn = UIHelper.makeMuteActionBtn(activity, "-モデ連打",
+                Color.argb(255, 100, 60, 160));
+        userSpamBtn.setOnClickListener(v -> {
+            if (StateHolder.roleSpamRunning) {
+                StateHolder.roleSpamRunning = false;
+                userSpamBtn.setText("-モデ連打");
+                stopBtnRef[0].setVisibility(View.GONE);
+                HookManager.log("[Role] -モデ連打 停止");
+                return;
+            }
+            StateHolder.roleSpamRunning = true;
+            userSpamBtn.setText("■ 停止");
+            stopBtnRef[0].setVisibility(View.GONE);
+            HookManager.log("[Role] -モデ連打 開始 interval=" + StateHolder.roleSpamInterval + "秒");
+            new Thread(() -> {
+                int round = 0;
+                while (StateHolder.roleSpamRunning) {
+                    round++;
+                    int count = 0;
+                    synchronized (StateHolder.muteTargets) {
+                        for (MuteTarget mt : StateHolder.muteTargets) {
+                            if (!StateHolder.roleSpamRunning) break;
+                            if (mt.guarded) continue;
+                            if (mt.callUserId != null
+                                    && mt.callUserId.equals(StateHolder.myCallUserUuid)) continue;
+                            CallManager.executeChangeUserRole(mt, false, true);
+                            count++;
+                        }
+                    }
+                    if (round == 1) {
+                        HookManager.log("[Role] -モデ連打 第1周: " + count + "人に送信");
+                    }
+                    try {
+                        Thread.sleep((long) (StateHolder.roleSpamInterval * 1000));
+                    } catch (InterruptedException ignored) {}
+                }
+                Activity act = StateHolder.getLastActivity();
+                if (act != null) act.runOnUiThread(() -> {
+                    userSpamBtn.setText("-モデ連打");
+                });
+                HookManager.log("[Role] -モデ連打 終了 (計" + round + "周)");
+            }).start();
+        });
+
+        TextView stopAllBtn = UIHelper.makeMuteActionBtn(activity, "■ 停止",
+                Color.argb(255, 80, 80, 80));
+        stopAllBtn.setVisibility(View.GONE);
+        stopBtnRef[0] = stopAllBtn;
+        stopAllBtn.setOnClickListener(v -> {
+            StateHolder.roleSpamRunning = false;
+            modSpamBtn.setText("+モデ連打");
+            userSpamBtn.setText("-モデ連打");
+            stopAllBtn.setVisibility(View.GONE);
+            HookManager.log("[Role] 連打 停止");
+        });
+
+        roleSpamBtnRow.addView(modSpamBtn,  roleSpamBtnLp);
+        roleSpamBtnRow.addView(userSpamBtn, roleSpamBtnLp);
+        roleSpamBtnRow.addView(stopAllBtn,  roleSpamBtnLp);
+        page.addView(roleSpamBtnRow);
 
         TextView callNote = new TextView(activity);
         callNote.setText("※ REJOIN: 通話外から実行（別通話に一度参加が必要）\n"

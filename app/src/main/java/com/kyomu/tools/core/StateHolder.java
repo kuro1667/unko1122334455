@@ -130,11 +130,17 @@ public class StateHolder {
     public static volatile float   callRejoinDelay = 1.5f;
     public static volatile String  detectedCallInitializerClass = null;
 
+    // ===== ロール連打 =====
+    public static volatile boolean roleSpamRunning  = false;
+    public static volatile float   roleSpamInterval = 1.0f;
+
 
     // ===== ログ =====
     public static final List<String> logList =
             Collections.synchronizedList(new ArrayList<>());
-    public static final int LOG_MAX = 200;
+    public static final int LOG_MAX      = 200;
+    public static final int LOG_MAX_CHARS = 5000; // 文字数上限（0でOFF）
+    public static volatile boolean logCapEnabled = true; // デフォルトON
 
     // ===== ログイン =====
     public static volatile boolean loginHookEnabled = false;

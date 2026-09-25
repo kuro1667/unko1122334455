@@ -201,6 +201,11 @@ public class SettingsPage {
         hookStatus.setText(buildHookStatusText());
         page.addView(hookStatus);
 
+        UIHelper.addToggle(page, activity,
+                "ログ文字数上限 (5000文字, 古い行から削除)",
+                StateHolder.logCapEnabled,
+                val -> StateHolder.logCapEnabled = val);
+
         return page;
     }
 

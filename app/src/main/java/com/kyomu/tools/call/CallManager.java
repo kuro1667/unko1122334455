@@ -853,6 +853,7 @@ public class CallManager {
     private static boolean autoSubscribe(Object observable,
                                          java.lang.reflect.InvocationHandler handler, String tag) {
         if (observable == null) return false;
+        boolean silent = tag.endsWith("_s");
         for (Method sm : observable.getClass().getMethods()) {
             if (sm.getParameterCount() == 1) {
                 Class<?> pType = sm.getParameterTypes()[0];
@@ -863,11 +864,11 @@ public class CallManager {
                                 new Class<?>[]{pType}, handler);
                         sm.setAccessible(true);
                         sm.invoke(observable, proxy);
-                        HookManager.log("[" + tag + "] subscribe: "
+                        if (!silent) HookManager.log("[" + tag + "] subscribe: "
                                 + sm.getName() + "(" + pType.getSimpleName() + ")");
                         return true;
                     } catch (Throwable t) {
-                        HookManager.log("[" + tag + "] " + sm.getName()
+                        if (!silent) HookManager.log("[" + tag + "] " + sm.getName()
                                 + " 失敗: " + t.getMessage());
                     }
                 }
@@ -878,14 +879,227 @@ public class CallManager {
                 try {
                     sm.setAccessible(true);
                     sm.invoke(observable);
-                    HookManager.log("[" + tag + "] subscribe() 成功");
+                    if (!silent) HookManager.log("[" + tag + "] subscribe() 成功");
                     return true;
                 } catch (Throwable ignored) {}
             }
         }
-        HookManager.log("[" + tag + "] subscribe全失敗 class="
+        if (!silent) HookManager.log("[" + tag + "] subscribe全失敗 class="
                 + observable.getClass().getName());
         return false;
+    }
+
+    // ===== changeUserRole RTM直送 =====
+
+    // silent=true のとき、通常ログを出さない（連打用）
+    public static void executeChangeUserRole(final MuteTarget target,
+                                             final boolean grantModerator) {
+        executeChangeUserRole(target, grantModerator, false);
+    }
+
+    public static void executeChangeUserRole(final MuteTarget target,
+                                             final boolean grantModerator,
+                                             final boolean silent) {
+        Object cvm = StateHolder.getCachedCallViewModel();
+        if (cvm == null) {
+            if (!silent) HookManager.log("[Role] CallViewModel未取得");
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                Object cvmInner = StateHolder.getCachedCallViewModel();
+                if (cvmInner == null) {
+                    if (!silent) HookManager.log("[Role] CallViewModel GC済");
+                    return;
+                }
+                Object myCall = XposedHelpers.getObjectField(cvmInner, "myCall");
+                if (myCall == null) {
+                    if (!silent) HookManager.log("[Role] myCall null");
+                    return;
+                }
+
+                Object conf = XposedHelpers.getObjectField(myCall,
+                        MappingManager.fld("CallImpl.conferenceCall"));
+                if (conf == null) {
+                    if (!silent) HookManager.log("[Role] ConferenceCall null");
+                    return;
+                }
+                long confId = (long) XposedHelpers.callMethod(conf, "getId");
+
+                Object apiProxy = XposedHelpers.getObjectField(myCall,
+                        MappingManager.fld("CallImpl.apiProxy"));
+                if (apiProxy == null) {
+                    if (!silent) HookManager.log("[Role] apiProxy null");
+                    return;
+                }
+
+                String targetUuid = resolveUuid(myCall, target);
+                if (targetUuid == null || targetUuid.isEmpty()) {
+                    if (!silent) HookManager.log("[Role] UUID不明: " + target.name);
+                    return;
+                }
+
+                final String roleStr         = grantModerator ? "moderator" : "participant";
+                final String finalTargetUuid = targetUuid;
+
+                if (!silent) HookManager.log("[Role] changeUserRole target=" + target.name
+                        + " uuid=" + targetUuid.substring(0, Math.min(8, targetUuid.length()))
+                        + " role=" + roleStr);
+
+                java.lang.reflect.InvocationHandler handler =
+                        java.lang.reflect.Proxy.getInvocationHandler(apiProxy);
+
+                Class<?> apiInterface = Class.forName(
+                        MappingManager.cls("CallApi"),
+                        false, apiProxy.getClass().getClassLoader());
+
+                // マッピングでメソッド検索
+                Method roleMethod = null;
+                String roleMethodName = MappingManager.mtd("CallApi.requestChangeRoleSignature");
+                if (roleMethodName != null && !roleMethodName.isEmpty()) {
+                    for (Method m : apiInterface.getDeclaredMethods()) {
+                        if (m.getName().equals(roleMethodName)) {
+                            roleMethod = m;
+                            break;
+                        }
+                    }
+                }
+
+                // マッピング未設定ならブルートフォース: (long, String, String) の形式
+                if (roleMethod == null) {
+                    if (!silent) HookManager.log("[Role] マッピング未設定 - ブルートフォース検索");
+                    for (Method m : apiInterface.getDeclaredMethods()) {
+                        Class<?>[] pt = m.getParameterTypes();
+                        if (pt.length == 3
+                                && pt[0] == long.class
+                                && pt[1] == String.class
+                                && pt[2] == String.class) {
+                            String mn = m.getName().toLowerCase();
+                            if (!mn.contains("mute") && !mn.contains("kick")) {
+                                roleMethod = m;
+                                if (!silent) HookManager.log("[Role] 候補メソッド: " + m.getName());
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // API未発見 → RTM直送にフォールバック
+                if (roleMethod == null) {
+                    if (!silent) HookManager.log("[Role] API未発見 - RTM直送");
+                    sendChangeUserRoleRtmDirect(target, finalTargetUuid, roleStr, silent);
+                    return;
+                }
+
+                Object result = handler.invoke(apiProxy, roleMethod,
+                        new Object[]{confId, finalTargetUuid, roleStr});
+
+                // API結果null → RTM直送にフォールバック
+                if (result == null) {
+                    if (!silent) HookManager.log("[Role] API結果null - RTM直送");
+                    sendChangeUserRoleRtmDirect(target, finalTargetUuid, roleStr, silent);
+                    return;
+                }
+
+                java.lang.reflect.InvocationHandler observerHandler = (proxy, method, args) -> {
+                    String methodName = method.getName();
+                    if ("onSuccess".equals(methodName) && args != null
+                            && args.length > 0 && args[0] != null) {
+                        try {
+                            Object sigPayload = extractSignaturePayload(args[0]);
+                            if (sigPayload == null) {
+                                if (!silent) HookManager.log("[Role] SignaturePayload null - RTM直送");
+                                sendChangeUserRoleRtmDirect(target, finalTargetUuid, roleStr, silent);
+                                return null;
+                            }
+
+                            String signature = null, timestamp = null;
+                            for (Field f : sigPayload.getClass().getDeclaredFields()) {
+                                f.setAccessible(true);
+                                String name = f.getName();
+                                Object val  = f.get(sigPayload);
+                                if ("signature".equals(name) && val != null)
+                                    signature = val.toString();
+                                if ("timestamp".equals(name) && val != null)
+                                    timestamp = val.toString();
+                            }
+
+                            if (signature == null || timestamp == null) {
+                                if (!silent) HookManager.log("[Role] sig/ts null - RTM直送");
+                                sendChangeUserRoleRtmDirect(target, finalTargetUuid, roleStr, silent);
+                                return null;
+                            }
+
+                            String cmd = "changeUserRole " + finalTargetUuid
+                                    + " " + roleStr
+                                    + " " + timestamp
+                                    + " " + signature;
+                            if (!silent) HookManager.log("[Role] cmd(署名付き): "
+                                    + cmd.substring(0, Math.min(60, cmd.length())) + "...");
+
+                            if (!ensureAgoraCached()) {
+                                if (!silent) HookManager.log("[Role] agora.a未取得");
+                                return null;
+                            }
+                            Object agoraA = StateHolder.getAgoraA();
+                            if (agoraA == null) {
+                                if (!silent) HookManager.log("[Role] agora.a GC済");
+                                return null;
+                            }
+                            XposedHelpers.callMethod(agoraA,
+                                    MappingManager.mtd("AgoraWrapper.sendCommand"), cmd);
+
+                            if (!silent) HookManager.log("[Role] 成功(署名付き): "
+                                    + target.name + " → " + roleStr);
+
+                        } catch (Throwable t) {
+                            if (!silent) HookManager.log("[Role] onSuccess処理失敗: " + t.getMessage());
+                        }
+                    } else if ("onError".equals(methodName) && args != null
+                            && args.length > 0) {
+                        if (!silent) HookManager.log("[Role] onError: " + args[0] + " - RTM直送");
+                        sendChangeUserRoleRtmDirect(target, finalTargetUuid, roleStr, silent);
+                    }
+                    return null;
+                };
+
+                autoSubscribe(result, observerHandler, silent ? "Role_s" : "Role");
+
+            } catch (Throwable t) {
+                HookManager.log("[Role] 失敗: " + t.getMessage());
+            }
+        });
+    }
+
+    private static void sendChangeUserRoleRtmDirect(MuteTarget target,
+                                                    String targetUuid,
+                                                    String roleStr) {
+        sendChangeUserRoleRtmDirect(target, targetUuid, roleStr, false);
+    }
+
+    private static void sendChangeUserRoleRtmDirect(MuteTarget target,
+                                                    String targetUuid,
+                                                    String roleStr,
+                                                    boolean silent) {
+        executor.execute(() -> {
+            try {
+                if (!ensureAgoraCached()) {
+                    if (!silent) HookManager.log("[Role/RTM] agora.a未取得");
+                    return;
+                }
+                Object agoraA = StateHolder.getAgoraA();
+                if (agoraA == null) {
+                    if (!silent) HookManager.log("[Role/RTM] agora.a GC済");
+                    return;
+                }
+                String cmd = "changeUserRole " + targetUuid + " " + roleStr;
+                XposedHelpers.callMethod(agoraA,
+                        MappingManager.mtd("AgoraWrapper.sendCommand"), cmd);
+                if (!silent) HookManager.log("[Role/RTM] 直送成功: " + target.name + " → " + roleStr);
+            } catch (Throwable t) {
+                if (!silent) HookManager.log("[Role/RTM] 直送失敗: " + t.getMessage());
+            }
+        });
     }
 
     public static void sendForceUnmute() {

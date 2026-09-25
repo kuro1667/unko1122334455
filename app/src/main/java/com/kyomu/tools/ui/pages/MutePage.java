@@ -130,8 +130,42 @@ public class MutePage {
         row2.addView(permKickAllBtn, btnLp);
         page.addView(row2);
 
+        // アクション行3
+        LinearLayout row3 = new LinearLayout(activity);
+        row3.setOrientation(LinearLayout.HORIZONTAL);
+        row3.setGravity(Gravity.CENTER);
+        row3.setPadding(0, 0, 0, 8);
+
+        TextView roleAllModBtn = UIHelper.makeMuteActionBtn(activity, "全+モデ",
+                Color.argb(255, 160, 80, 220));
+        roleAllModBtn.setOnClickListener(v -> {
+            synchronized (StateHolder.muteTargets) {
+                for (MuteTarget mt : StateHolder.muteTargets) {
+                    if (mt.guarded) continue;
+                    CallManager.executeChangeUserRole(mt, true);
+                }
+            }
+        });
+
+        TextView roleAllUserBtn = UIHelper.makeMuteActionBtn(activity, "全-モデ",
+                Color.argb(255, 100, 60, 160));
+        roleAllUserBtn.setOnClickListener(v -> {
+            synchronized (StateHolder.muteTargets) {
+                for (MuteTarget mt : StateHolder.muteTargets) {
+                    if (mt.guarded) continue;
+                    if (mt.callUserId != null
+                            && mt.callUserId.equals(StateHolder.myCallUserUuid)) continue;
+                    CallManager.executeChangeUserRole(mt, false);
+                }
+            }
+        });
+
+        row3.addView(roleAllModBtn, btnLp);
+        row3.addView(roleAllUserBtn, btnLp);
+        page.addView(row3);
+
         TextView note = new TextView(activity);
-        note.setText("※ host/moderator権限が必要（ミュート・キック共通）");
+        note.setText("※ host/moderator権限が必要（全操作共通）");
         note.setTextColor(Color.argb(150, 255, 200, 100));
         note.setTextSize(9);
         note.setGravity(Gravity.CENTER);
@@ -140,7 +174,7 @@ public class MutePage {
 
         ScrollView muteScroll = new ScrollView(activity);
         muteScroll.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, UIHelper.dp(200, activity)));
+                LinearLayout.LayoutParams.MATCH_PARENT, UIHelper.dp(260, activity)));
 
         LinearLayout muteList = new LinearLayout(activity);
         muteList.setOrientation(LinearLayout.VERTICAL);
@@ -240,6 +274,33 @@ public class MutePage {
                     btnRow.addView(unmuteBtn, lp); btnRow.addView(kickBtn, lp);
                     btnRow.addView(permKickBtn, lp);
                     row.addView(btnRow);
+
+                    LinearLayout btnRow2 = new LinearLayout(activity);
+                    btnRow2.setOrientation(LinearLayout.HORIZONTAL);
+                    btnRow2.setGravity(Gravity.CENTER_VERTICAL);
+                    btnRow2.setPadding(0, 2, 0, 0);
+
+                    TextView roleModBtn = UIHelper.makeSmallBtn(activity, "+モデ",
+                            Color.argb(255, 160, 80, 220));
+                    roleModBtn.setOnClickListener(v ->
+                            CallManager.executeChangeUserRole(mt, true));
+                    LinearLayout.LayoutParams roleModLp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT);
+                    roleModLp.setMargins(3, 0, 3, 0);
+
+                    TextView roleUserBtn = UIHelper.makeSmallBtn(activity, "-モデ",
+                            Color.argb(255, 100, 60, 160));
+                    roleUserBtn.setOnClickListener(v ->
+                            CallManager.executeChangeUserRole(mt, false));
+                    LinearLayout.LayoutParams roleUserLp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT);
+                    roleUserLp.setMargins(3, 0, 3, 0);
+
+                    btnRow2.addView(roleModBtn, roleModLp);
+                    btnRow2.addView(roleUserBtn, roleUserLp);
+                    row.addView(btnRow2);
 
                     View div = new View(activity);
                     div.setBackgroundColor(Color.argb(50, 100, 100, 100));

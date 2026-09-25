@@ -872,6 +872,16 @@ public class HookManager {
             StateHolder.logList.add(line);
             if (StateHolder.logList.size() > StateHolder.LOG_MAX)
                 StateHolder.logList.remove(0);
+            // 文字数上限が有効な場合、古い行から削除
+            if (StateHolder.logCapEnabled && StateHolder.LOG_MAX_CHARS > 0) {
+                int totalChars = 0;
+                for (String s : StateHolder.logList) totalChars += s.length();
+                while (totalChars > StateHolder.LOG_MAX_CHARS
+                        && !StateHolder.logList.isEmpty()) {
+                    totalChars -= StateHolder.logList.get(0).length();
+                    StateHolder.logList.remove(0);
+                }
+            }
         }
         try {
             java.io.File logDir = new java.io.File("/data/data/jp.nanameue.yay/cache");
